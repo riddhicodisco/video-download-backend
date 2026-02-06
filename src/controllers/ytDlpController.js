@@ -46,78 +46,124 @@ const getVideoInfoYtDlp = (req, res) => {
 
   console.log("Fetching video info with yt-dlp:", url);
 
-  const args = ["--dump-json", ...getDefaultArgs(), url];
+  // Try multiple methods in order of reliability
+  const tryMethods = [
+    { name: "with cookies", useCookies: true },
+    { name: "without cookies", useCookies: false },
+    { name: "with different user agent", useCookies: false, customUA: true },
+  ];
 
-  const ytDlp = spawn(ytDlpPath, args);
+  let currentMethod = 0;
 
-  ytDlp.on("error", (err) => {
-    console.error("Failed to start yt-dlp process:", err);
-    if (!res.headersSent) {
-      res.status(500).json({
-        error: "yt-dlp execution failed",
-        details: err.message,
-        path: ytDlpPath,
-      });
-    }
-  });
-
-  let dataBuffer = "";
-  let errorBuffer = "";
-
-  ytDlp.stdout.on("data", (data) => {
-    dataBuffer += data.toString();
-  });
-
-  ytDlp.stderr.on("data", (data) => {
-    errorBuffer += data.toString();
-  });
-
-  ytDlp.on("close", (code) => {
-    if (code !== 0) {
-      console.error("yt-dlp error code:", code);
-      console.error("yt-dlp stderr:", errorBuffer);
-
-      const lowerError = errorBuffer.toLowerCase();
-      const isSignball =
-        lowerError.includes("sign in") ||
-        lowerError.includes("bot") ||
-        lowerError.includes("unavailable") ||
-        lowerError.includes("content is not available");
-
+  const tryNextMethod = () => {
+    if (currentMethod >= tryMethods.length) {
       return res.status(500).json({
-        error: isSignball
-          ? "YouTube blocked the request (Bot detection/Unavailable)"
-          : "Failed to fetch video info",
-        details: errorBuffer.trim(),
-        debug: {
-          code,
-          cookiesFound: fs.existsSync(cookiesPath),
-          cookiesPath,
-          suggestion: isSignball
-            ? "Try providing a cookies.txt file or check if the video is age-restricted."
-            : "Check logs",
-        },
+        error:
+          "All download methods failed. YouTube may be temporarily blocking requests.",
+        suggestion: "Please try again in a few minutes or contact support.",
+        methods: tryMethods.map((m) => m.name),
       });
     }
 
-    try {
-      const info = JSON.parse(dataBuffer);
-      res.json({
-        title: info.title,
-        thumbnail: info.thumbnail,
-        duration: info.duration,
-        author: info.uploader,
-        formats: info.formats,
-      });
-    } catch (err) {
-      console.error("JSON parse error:", err);
-      res.status(500).json({
-        error: "Failed to parse video info",
-        details: err.message,
-        partialData: dataBuffer.substring(0, 100),
-      });
+    const method = tryMethods[currentMethod];
+    console.log(`Trying method: ${method.name}`);
+
+    const args = ["--dump-json", "--no-playlist"];
+
+    // Add user agent
+    if (method.customUA) {
+      args.push(
+        "--user-agent",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      );
+    } else {
+      args.push(
+        "--user-agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      );
     }
-  });
+
+    // Add cookies if available and method requires it
+    if (method.useCookies && fs.existsSync(cookiesPath)) {
+      args.push("--cookies", cookiesPath);
+    }
+
+    args.push(url);
+
+    const ytDlp = spawn(ytDlpPath, args);
+
+    ytDlp.on("error", (err) => {
+      console.error("Failed to start yt-dlp process:", err);
+      if (!res.headersSent) {
+        currentMethod++;
+        tryNextMethod();
+      }
+    });
+
+    let dataBuffer = "";
+    let errorBuffer = "";
+
+    ytDlp.stdout.on("data", (data) => {
+      dataBuffer += data.toString();
+    });
+
+    ytDlp.stderr.on("data", (data) => {
+      errorBuffer += data.toString();
+    });
+
+    ytDlp.on("close", (code) => {
+      if (code !== 0) {
+        console.error(`Method ${method.name} failed with code:`, code);
+        console.error("Error:", errorBuffer);
+
+        // Try next method
+        currentMethod++;
+        if (currentMethod < tryMethods.length) {
+          setTimeout(() => tryNextMethod(), 1000); // 1 second delay between attempts
+        } else {
+          // All methods failed
+          if (!res.headersSent) {
+            return res.status(500).json({
+              error: "Unable to fetch video information",
+              details: "YouTube may be blocking automated requests",
+              suggestion: "Try again later or use a different video",
+              methods: tryMethods.map((m) => m.name),
+            });
+          }
+        }
+        return;
+      }
+
+      // Success
+      try {
+        const info = JSON.parse(dataBuffer);
+        res.json({
+          title: info.title,
+          thumbnail: info.thumbnail,
+          duration: info.duration,
+          author: info.uploader,
+          formats: info.formats,
+          method: method.name,
+        });
+      } catch (err) {
+        console.error("JSON parse error:", err);
+        currentMethod++;
+        if (currentMethod < tryMethods.length) {
+          setTimeout(() => tryNextMethod(), 1000);
+        } else {
+          if (!res.headersSent) {
+            res.status(500).json({
+              error: "Failed to parse video information",
+              details: "Invalid response from YouTube",
+            });
+          }
+        }
+      }
+    });
+  };
+
+  // Start trying methods
+  tryNextMethod();
 };
 
 const downloadAudioYtDlp = (req, res) => {
@@ -183,35 +229,29 @@ const downloadAudioYtDlp = (req, res) => {
       ytDlp.on("error", (err) => {
         console.error("yt-dlp spawn error during audio download:", err);
         if (!res.headersSent) {
-          res
-            .status(500)
-            .json({
-              error: "Failed to start download process",
-              details: err.message,
-            });
+          res.status(500).json({
+            error: "Failed to start download process",
+            details: err.message,
+          });
         }
       });
 
       ytDlp.on("close", (code) => {
         console.log("yt-dlp audio download process exited with code", code);
         if (code !== 0 && !res.headersSent) {
-          res
-            .status(500)
-            .json({
-              error: "Download process failed",
-              details: downloadErrorBuffer,
-            });
+          res.status(500).json({
+            error: "Download process failed",
+            details: downloadErrorBuffer,
+          });
         }
       });
     } catch (err) {
       console.error("Error parsing info for download:", err);
       if (!res.headersSent) {
-        res
-          .status(500)
-          .json({
-            error: "Internal server error during download init",
-            details: err.message,
-          });
+        res.status(500).json({
+          error: "Internal server error during download init",
+          details: err.message,
+        });
       }
     }
   });
@@ -279,12 +319,10 @@ const downloadVideoYtDlp = (req, res) => {
       ytDlp.on("error", (err) => {
         console.error("yt-dlp spawn error during video download:", err);
         if (!res.headersSent) {
-          res
-            .status(500)
-            .json({
-              error: "Failed to start download process",
-              details: err.message,
-            });
+          res.status(500).json({
+            error: "Failed to start download process",
+            details: err.message,
+          });
         }
       });
 

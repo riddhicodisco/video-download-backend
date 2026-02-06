@@ -22,6 +22,18 @@ const {
   downloadAudioSimple,
 } = require("../controllers/simpleController");
 
+// Import universal controller (NEW - works for all users)
+const {
+  getVideoInfoUniversal,
+  downloadVideoUniversal,
+  downloadAudioUniversal,
+} = require("../controllers/universalController");
+
+// UNIVERSAL ROUTES (Recommended for production - works for all users)
+router.post("/info-universal", getVideoInfoUniversal);
+router.post("/download/video-universal", downloadVideoUniversal);
+router.post("/download/audio-universal", downloadAudioUniversal);
+
 // Main routes using yt-dlp (Most reliable)
 router.post("/info", getVideoInfoYtDlp);
 router.post("/download/video", downloadVideoYtDlp);
