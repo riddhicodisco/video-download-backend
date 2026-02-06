@@ -1,14 +1,14 @@
 // Load environment variables (optional)
 try {
-  require('dotenv').config();
+  require("dotenv").config();
 } catch (err) {
-  console.log('⚠️  dotenv not installed, using default environment variables');
+  console.log("⚠️  dotenv not installed, using default environment variables");
 }
 
-const express = require('express');
-const corsMiddleware = require('./src/config/cors');
-const errorHandler = require('./src/middleware/errorHandler');
-const youtubeRoutes = require('./src/routes/youtube');
+const express = require("express");
+const corsMiddleware = require("./src/config/cors");
+const errorHandler = require("./src/middleware/errorHandler");
+const youtubeRoutes = require("./src/routes/youtube");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -33,29 +33,32 @@ app.use((req, res, next) => {
 });
 
 // Health check endpoint
-app.get('/', (req, res) => {
+app.get("/", (req, res) => {
   res.json({
-    message: 'YouTube Downloader API is running',
-    version: '1.0.0',
+    message: "YouTube Downloader API is running",
+    version: "1.0.0",
+    environment: process.env.NODE_ENV || "development",
+    ytDlpPath: process.env.YT_DLP_PATH || "default",
     endpoints: {
-      info: 'POST /api/info',
-      downloadVideo: 'POST /api/download/video',
-      downloadAudio: 'POST /api/download/audio'
-    }
+      info: "POST /api/info",
+      downloadVideo: "POST /api/download/video",
+      downloadAudio: "POST /api/download/audio",
+      diag: "GET /api/diag",
+    },
   });
 });
 
 // API Routes
-app.use('/api', youtubeRoutes);
+app.use("/api", youtubeRoutes);
 
 // 404 handler
 app.use((req, res) => {
   const origin = req.headers.origin;
   if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
   }
-  res.status(404).json({ error: 'Route not found' });
+  res.status(404).json({ error: "Route not found" });
 });
 
 // Error handler (must be last)
@@ -64,12 +67,14 @@ app.use(errorHandler);
 // Start server
 const server = app.listen(PORT, () => {
   console.log(`✅ Server is running on http://localhost:${PORT}`);
-  console.log(`📁 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📡 CORS_ORIGIN Config: ${process.env.CORS_ORIGIN || 'Allow All (*)'}`);
-  console.log(`🍪 Cookies Path: ${process.env.COOKIES_PATH || 'Standard'}`);
+  console.log(`📁 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(
+    `📡 CORS_ORIGIN Config: ${process.env.CORS_ORIGIN || "Allow All (*)"}`,
+  );
+  console.log(`🍪 Cookies Path: ${process.env.COOKIES_PATH || "Standard"}`);
 
   // Initialize cron jobs
-  const { initCronJobs } = require('./src/services/cronService');
+  const { initCronJobs } = require("./src/services/cronService");
   initCronJobs();
 });
 
