@@ -11,6 +11,26 @@ const localWinPath = path.join(__dirname, '../../yt-dlp.exe');
 // Use env var if set, otherwise local exe on Windows, otherwise 'yt-dlp' (PATH) on Linux
 const ytDlpPath = process.env.YT_DLP_PATH || (isWindows ? localWinPath : 'yt-dlp');
 
+// Path to cookies file (Render stores secret files in /etc/secrets/)
+const cookiesPath = process.env.COOKIES_PATH || (isWindows ? 'cookies.txt' : '/etc/secrets/cookies.txt');
+
+// Helper to get default args
+const getDefaultArgs = () => {
+  const args = [
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    '--no-playlist'
+  ];
+
+  if (fs.existsSync(cookiesPath)) {
+    console.log('🍪 Cookies file found, using it for authentication.');
+    args.push('--cookies', cookiesPath);
+  } else {
+    console.log('⚠️ No cookies file found. YouTube might block this request (Sign-in required).');
+  }
+
+  return args;
+};
+
 const getVideoInfoYtDlp = (req, res) => {
   const { url } = req.body;
 
@@ -20,7 +40,13 @@ const getVideoInfoYtDlp = (req, res) => {
 
   console.log('Fetching video info with yt-dlp:', url);
 
-  const ytDlp = spawn(ytDlpPath, ['--dump-json', url]);
+  const args = [
+    '--dump-json',
+    ...getDefaultArgs(),
+    url
+  ];
+
+  const ytDlp = spawn(ytDlpPath, args);
 
   let dataBuffer = '';
   let errorBuffer = '';
@@ -65,7 +91,8 @@ const downloadAudioYtDlp = (req, res) => {
   console.log('Starting audio download with yt-dlp:', url);
 
   // First fetch info to get the title
-  const infoProcess = spawn(ytDlpPath, ['--dump-json', '--no-playlist', url]);
+  const infoArgs = ['--dump-json', ...getDefaultArgs(), url];
+  const infoProcess = spawn(ytDlpPath, infoArgs);
 
   let infoBuffer = '';
 
@@ -91,6 +118,7 @@ const downloadAudioYtDlp = (req, res) => {
         '-f', 'bestaudio',     // Best audio
         '--extract-audio',     // Extract audio
         '--audio-format', 'mp3',
+        ...getDefaultArgs(),   // Add cookies/user-agent
         url
       ]);
 
@@ -124,7 +152,8 @@ const downloadVideoYtDlp = (req, res) => {
   console.log('Starting video download with yt-dlp:', url, 'Quality:', quality);
 
   // First fetch info for title
-  const infoProcess = spawn(ytDlpPath, ['--dump-json', '--no-playlist', url]);
+  const infoArgs = ['--dump-json', ...getDefaultArgs(), url];
+  const infoProcess = spawn(ytDlpPath, infoArgs);
   let infoBuffer = '';
 
   infoProcess.stdout.on('data', (data) => infoBuffer += data.toString());
@@ -157,6 +186,7 @@ const downloadVideoYtDlp = (req, res) => {
       const args = [
         '-o', '-',
         '-f', format,
+        ...getDefaultArgs(),
         url
       ];
 
