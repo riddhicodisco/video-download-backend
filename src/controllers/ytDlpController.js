@@ -74,15 +74,16 @@ const getVideoInfoYtDlp = (req, res) => {
     if (code !== 0) {
       console.error('yt-dlp error code:', code);
       console.error('yt-dlp stderr:', errorBuffer);
-      console.error('Cookies file exists:', fs.existsSync(cookiesPath));
-      console.error('Cookies path:', cookiesPath);
+      const isSignball = errorBuffer.includes('Sign in to confirm you\'re not a bot');
+
       return res.status(500).json({
-        error: 'Failed to fetch video info',
-        details: errorBuffer,
+        error: isSignball ? 'YouTube blocked the request (Bot detection)' : 'Failed to fetch video info',
+        details: errorBuffer.trim(),
         debug: {
           code,
           cookiesFound: fs.existsSync(cookiesPath),
-          cookiesPath
+          cookiesPath,
+          suggestion: isSignball ? 'Try providing a cookies.txt file or use a fallback' : 'Check logs'
         }
       });
     }
@@ -94,11 +95,15 @@ const getVideoInfoYtDlp = (req, res) => {
         thumbnail: info.thumbnail,
         duration: info.duration,
         author: info.uploader,
-        formats: info.formats // Optional: helpful for debugging
+        formats: info.formats
       });
     } catch (err) {
       console.error('JSON parse error:', err);
-      res.status(500).json({ error: 'Failed to parse video info' });
+      res.status(500).json({
+        error: 'Failed to parse video info',
+        details: err.message,
+        partialData: dataBuffer.substring(0, 100)
+      });
     }
   });
 };
@@ -124,7 +129,10 @@ const downloadAudioYtDlp = (req, res) => {
 
   infoProcess.on('close', (code) => {
     if (code !== 0) {
-      return res.status(500).json({ error: 'Failed to fetch video details for download' });
+      return res.status(500).json({
+        error: 'Failed to fetch video details for download',
+        details: infoBuffer // This might actually be error info if it went to stdout or stderr
+      });
     }
 
     try {
@@ -146,19 +154,31 @@ const downloadAudioYtDlp = (req, res) => {
 
       ytDlp.stdout.pipe(res);
 
+      let downloadErrorBuffer = '';
       ytDlp.stderr.on('data', (data) => {
+        downloadErrorBuffer += data.toString();
         // Log progress but don't send to res as it corrupts the binary stream
-        console.log(`yt-dlp stderr: ${data}`);
+        console.log(`yt-dlp download stderr: ${data}`);
+      });
+
+      ytDlp.on('error', (err) => {
+        console.error('yt-dlp spawn error during audio download:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to start download process', details: err.message });
+        }
       });
 
       ytDlp.on('close', (code) => {
-        console.log('yt-dlp download process exited with code', code);
+        console.log('yt-dlp audio download process exited with code', code);
+        if (code !== 0 && !res.headersSent) {
+          res.status(500).json({ error: 'Download process failed', details: downloadErrorBuffer });
+        }
       });
 
     } catch (err) {
       console.error('Error parsing info for download:', err);
       if (!res.headersSent) {
-        res.status(500).json({ error: 'Internal server error during download init' });
+        res.status(500).json({ error: 'Internal server error during download init', details: err.message });
       }
     }
   });
@@ -181,7 +201,10 @@ const downloadVideoYtDlp = (req, res) => {
   infoProcess.stdout.on('data', (data) => infoBuffer += data.toString());
 
   infoProcess.on('close', (code) => {
-    if (code !== 0) return res.status(500).json({ error: 'Failed to fetch video details' });
+    if (code !== 0) return res.status(500).json({
+      error: 'Failed to fetch video details',
+      details: 'Check server logs for yt-dlp output'
+    });
 
     try {
       const info = JSON.parse(infoBuffer);
@@ -191,8 +214,6 @@ const downloadVideoYtDlp = (req, res) => {
       res.setHeader('Content-Type', 'video/mp4');
 
       // Construct format string
-      // If quality is "1080p", we want "bestvideo[height=1080]+bestaudio/best[height=1080]"
-      // Default to "best" if no quality specified or "auto"
       let format = 'bestvideo+bestaudio/best';
 
       if (quality && quality !== 'auto') {
@@ -201,9 +222,6 @@ const downloadVideoYtDlp = (req, res) => {
           format = `bestvideo[height=${height}]+bestaudio/best[height=${height}]`;
         }
       }
-
-      // Note: merging video+audio usually requires ffmpeg to be in PATH or same dir.
-      // Assuming ffmpeg is available since previous codes used fluent-ffmpeg.
 
       const args = [
         '-o', '-',
@@ -215,11 +233,30 @@ const downloadVideoYtDlp = (req, res) => {
       const ytDlp = spawn(ytDlpPath, args);
 
       ytDlp.stdout.pipe(res);
-      ytDlp.stderr.on('data', d => console.log(`yt-dlp stderr: ${d}`));
+
+      let downloadErrorBuffer = '';
+      ytDlp.stderr.on('data', d => {
+        downloadErrorBuffer += d.toString();
+        console.log(`yt-dlp video stderr: ${d}`);
+      });
+
+      ytDlp.on('error', (err) => {
+        console.error('yt-dlp spawn error during video download:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to start download process', details: err.message });
+        }
+      });
+
+      ytDlp.on('close', (code) => {
+        console.log('yt-dlp video download process exited with code', code);
+        if (code !== 0 && !res.headersSent) {
+          res.status(500).json({ error: 'Download process failed', details: downloadErrorBuffer });
+        }
+      });
 
     } catch (e) {
       console.error(e);
-      if (!res.headersSent) res.status(500).json({ error: 'Download init failed' });
+      if (!res.headersSent) res.status(500).json({ error: 'Download init failed', details: e.message });
     }
   });
 };

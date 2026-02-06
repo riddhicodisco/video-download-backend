@@ -47,21 +47,20 @@ const downloadVideoPlayDl = async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${title}.mp4"`);
     res.setHeader('Content-Type', 'video/mp4');
 
-    // Get the best video stream
     const stream = await ytdl.stream(url, {
       quality: 'highest',
       format: 'mp4'
     });
 
     stream.on('error', (err) => {
-      console.error('Stream error:', err);
+      console.error('play-dl stream error:', err);
       if (!res.headersSent) {
-        res.status(500).json({ error: 'Download failed', details: err.message });
+        res.status(500).json({ error: 'Download failed (play-dl stream error)', details: err.message });
       }
     });
 
     stream.on('finish', () => {
-      console.log('Video download completed');
+      console.log('play-dl video download completed');
     });
 
     stream.pipe(res);
@@ -95,21 +94,20 @@ const downloadAudioPlayDl = async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${title}.mp3"`);
     res.setHeader('Content-Type', 'audio/mpeg');
 
-    // Get the best audio stream
     const stream = await ytdl.stream(url, {
       quality: 2,
       format: 'mp3'
     });
 
     stream.on('error', (err) => {
-      console.error('Stream error:', err);
+      console.error('play-dl audio stream error:', err);
       if (!res.headersSent) {
-        res.status(500).json({ error: 'Download failed', details: err.message });
+        res.status(500).json({ error: 'Download failed (play-dl audio stream error)', details: err.message });
       }
     });
 
     stream.on('finish', () => {
-      console.log('Audio download completed');
+      console.log('play-dl audio download completed');
     });
 
     stream.pipe(res);
