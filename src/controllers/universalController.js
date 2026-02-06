@@ -3,14 +3,23 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-// Path determination
+// Path determination for cross-platform support
 const isWindows = process.platform === "win32";
 const localWinPath = path.join(__dirname, "../../yt-dlp.exe");
+
+// Use env var if set, otherwise local exe on Windows, otherwise 'yt-dlp' (PATH) on Linux
 const ytDlpPath =
   process.env.YT_DLP_PATH || (isWindows ? localWinPath : "yt-dlp");
+
+// Path to cookies file (Render stores secret files in /etc/secrets/)
 const cookiesPath =
   process.env.COOKIES_PATH ||
   (isWindows ? "cookies.txt" : "/etc/secrets/cookies.txt");
+
+console.log("Platform:", process.platform);
+console.log("yt-dlp path:", ytDlpPath);
+console.log("Cookies path:", cookiesPath);
+console.log("yt-dlp exists:", fs.existsSync(ytDlpPath));
 
 // Method 1: Noembed API (Free, no cookies required)
 const getVideoInfoNoembed = async (url) => {
@@ -89,9 +98,19 @@ const tryYtDlpMethod = (url, method) => {
 
     args.push(url);
 
+    console.log(`Trying yt-dlp method: ${method.name}`);
+    console.log(`Command: ${ytDlpPath} ${args.join(" ")}`);
+
     const ytDlp = spawn(ytDlpPath, args);
     let dataBuffer = "";
     let errorBuffer = "";
+
+    // Set timeout for this method
+    const timeout = setTimeout(() => {
+      console.log(`Method ${method.name} timeout, killing process`);
+      ytDlp.kill("SIGKILL");
+      reject(new Error(`Method ${method.name} timeout after 30 seconds`));
+    }, 30000); // 30 second timeout per method
 
     ytDlp.stdout.on("data", (data) => {
       dataBuffer += data.toString();
@@ -99,16 +118,29 @@ const tryYtDlpMethod = (url, method) => {
 
     ytDlp.stderr.on("data", (data) => {
       errorBuffer += data.toString();
+      console.log(`yt-dlp stderr (${method.name}): ${data.toString().trim()}`);
     });
 
     ytDlp.on("close", (code) => {
+      clearTimeout(timeout);
+
       if (code !== 0) {
-        reject(new Error(`Exit code ${code}: ${errorBuffer}`));
+        console.error(`Method ${method.name} failed with code ${code}`);
+        console.error(`Error: ${errorBuffer}`);
+        reject(
+          new Error(`Exit code ${code}: ${errorBuffer.substring(0, 200)}`),
+        );
         return;
       }
 
       try {
         const info = JSON.parse(dataBuffer);
+        if (!info.title) {
+          reject(new Error(`No title found in response`));
+          return;
+        }
+
+        console.log(`Method ${method.name} success: ${info.title}`);
         resolve({
           title: info.title,
           thumbnail: info.thumbnail,
@@ -117,11 +149,14 @@ const tryYtDlpMethod = (url, method) => {
           formats: info.formats,
         });
       } catch (err) {
+        console.error(`JSON parse error (${method.name}):`, err.message);
         reject(new Error(`JSON parse failed: ${err.message}`));
       }
     });
 
     ytDlp.on("error", (err) => {
+      clearTimeout(timeout);
+      console.error(`Spawn error (${method.name}):`, err.message);
       reject(new Error(`Spawn failed: ${err.message}`));
     });
   });
