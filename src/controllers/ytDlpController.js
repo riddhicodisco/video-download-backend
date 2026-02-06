@@ -9,7 +9,7 @@ const isWindows = process.platform === 'win32';
 const localWinPath = path.join(__dirname, '../../yt-dlp.exe');
 
 // Use env var if set, otherwise local exe on Windows, otherwise 'yt-dlp' (PATH) on Linux
-const ytDlpPath = process.env.YT_DLP_PATH || (isWindows ? localWinPath : 'yt-dlp');
+const ytDlpPath = process.env.YT_DLP_PATH || (isWindows ? localWinPath : (fs.existsSync('/usr/local/bin/yt-dlp') ? '/usr/local/bin/yt-dlp' : 'yt-dlp'));
 
 // Path to cookies file (Render stores secret files in /etc/secrets/)
 const cookiesPath = process.env.COOKIES_PATH || (isWindows ? 'cookies.txt' : '/etc/secrets/cookies.txt');
@@ -261,23 +261,38 @@ const downloadVideoYtDlp = (req, res) => {
       ytDlp.on('close', (code) => {
         console.log('yt-dlp video download process exited with code', code);
         if (code !== 0 && !res.headersSent) {
-          res.status(500).json({ error: 'Download process failed', details: downloadErrorBuffer });
+          res.status(500).json({
+            error: 'Download process failed',
+            details: downloadErrorBuffer.trim() || 'Process exited with non-zero code'
+          });
         }
       });
 
     } catch (e) {
-      console.error(e);
-      if (!res.headersSent) res.status(500).json({ error: 'Download init failed', details: e.message });
+      console.error('Error during video download processing:', e);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Download processing failed', details: e.message });
+      }
     }
   });
 };
 
 const diag = async (req, res) => {
   const { execSync } = require('child_process');
+
   let ffmpegVersion = 'not found';
   try {
     ffmpegVersion = execSync('ffmpeg -version').toString().split('\n')[0];
-  } catch (e) { }
+  } catch (e) {
+    ffmpegVersion = `Error: ${e.message}`;
+  }
+
+  let ytDlpVersion = 'not found';
+  try {
+    ytDlpVersion = execSync(`${ytDlpPath} --version`).toString().trim();
+  } catch (e) {
+    ytDlpVersion = `Error: ${e.message}`;
+  }
 
   const binaryExists = fs.existsSync(ytDlpPath) || !isWindows;
   res.json({
@@ -290,6 +305,7 @@ const diag = async (req, res) => {
     ytDlp: {
       path: ytDlpPath,
       exists: binaryExists,
+      version: ytDlpVersion,
       isWindows
     },
     cookiesFolder: {
