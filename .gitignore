@@ -1,36 +1,25 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# local env files
-.env*.local
+node_modules
+*.log
 .env
+.env.local
+*.js.tmp
+*-player-script.js
+temp/
 
-# vercel
-.vercel
+# Debug scripts and tests
+repro_issue.js
+test_api.js
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Downloaded files
+*.mp3
+*.mp4
+*.webm
+*.m4a
+
+# Editor directories
+.vscode/
+.idea/
+
+yarn.lock
+
+package-lock.json
