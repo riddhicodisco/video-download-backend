@@ -1,44 +1,41 @@
 const cors = require('cors');
 
-const getOrigin = () => {
-  const origin = process.env.CORS_ORIGIN;
-  console.log('--- CORS CONFIG ---');
-  console.log('CORS_ORIGIN env:', origin);
-
-  if (!origin) {
-    console.log('No CORS_ORIGIN set, using defaults: localhost');
-    return ['http://localhost:3000', 'http://localhost:3001'];
-  }
-
-  if (origin === '*') {
-    console.log('CORS set to wildcard (*)');
-    return true;
-  }
-
-  const origins = origin.split(',').map(o => o.trim());
-  console.log('Allowed Origins:', origins);
-  return origins;
-};
-
 const corsOptions = {
   origin: (origin, callback) => {
-    const allowed = getOrigin();
-    console.log('Incoming Request Origin:', origin);
+    const allowedOriginEnv = process.env.CORS_ORIGIN;
 
-    // If no origin (like mobile apps or curl), allow it
-    if (!origin) return callback(null, true);
+    // Log for Render/Production debugging
+    console.log(`[CORS DEBUG] Request from Origin: ${origin}`);
+    console.log(`[CORS DEBUG] Allowed Origin Env: ${allowedOriginEnv}`);
 
-    if (allowed === true || (Array.isArray(allowed) && allowed.includes(origin)) || allowed === origin) {
-      callback(null, true);
+    // If no origin (like mobile apps, postman, or same-origin), allow it
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // If CORS_ORIGIN is set to * or not set, allow all for debugging
+    if (!allowedOriginEnv || allowedOriginEnv === '*') {
+      console.log('[CORS DEBUG] Wildcard or no env set - allowing');
+      return callback(null, true);
+    }
+
+    // Handle comma-separated list
+    const allowedOrigins = allowedOriginEnv.split(',').map(o => o.trim());
+
+    if (allowedOrigins.includes(origin)) {
+      console.log(`[CORS DEBUG] Origin ${origin} is in allowed list.`);
+      return callback(null, true);
     } else {
-      console.error('CORS blocked for origin:', origin);
-      callback(new Error('Not allowed by CORS'));
+      console.error(`[CORS DEBUG] BLOCKED. Origin ${origin} not in [${allowedOrigins}]`);
+      // For debugging, we can return an error or null
+      return callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   credentials: true,
-  optionsSuccessStatus: 200
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
 module.exports = cors(corsOptions);
