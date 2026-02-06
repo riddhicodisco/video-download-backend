@@ -175,5 +175,26 @@ const downloadVideoYtDlp = (req, res) => {
 module.exports = {
   getVideoInfoYtDlp,
   downloadAudioYtDlp,
-  downloadVideoYtDlp
+  downloadVideoYtDlp,
+  // Debug function
+  debugYtDlp: (req, res) => {
+    const { spawn } = require('child_process');
+    const ytDlpProcess = spawn(ytDlpPath, ['--version']);
+
+    let output = '';
+    let error = '';
+
+    ytDlpProcess.stdout.on('data', (data) => output += data.toString());
+    ytDlpProcess.stderr.on('data', (data) => error += data.toString());
+
+    ytDlpProcess.on('close', (code) => {
+      res.json({
+        path: ytDlpPath,
+        version: output.trim(),
+        error: error,
+        platform: process.platform,
+        code: code
+      });
+    });
+  }
 };

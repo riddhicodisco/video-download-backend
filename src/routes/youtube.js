@@ -40,4 +40,8 @@ router.post("/info-simple", getVideoInfoSimple);
 router.post("/download/video-simple", downloadVideoSimple);
 router.post("/download/audio-simple", downloadAudioSimple);
 
+// Debug route
+const { debugYtDlp } = require("../controllers/ytDlpController");
+router.get("/debug-yt", debugYtDlp);
+
 module.exports = router;
