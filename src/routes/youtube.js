@@ -43,5 +43,6 @@ router.post("/download/audio-simple", downloadAudioSimple);
 // Debug and Diagnostic routes
 const { debugYtDlp, diag } = require("../controllers/ytDlpController");
 router.get("/debug-yt", debugYtDlp);
+router.get("/diag", diag);
 
 module.exports = router;
