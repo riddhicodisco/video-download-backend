@@ -61,8 +61,19 @@ const getVideoInfoYtDlp = (req, res) => {
 
   ytDlp.on('close', (code) => {
     if (code !== 0) {
-      console.error('yt-dlp error:', errorBuffer);
-      return res.status(500).json({ error: 'Failed to fetch video info', details: errorBuffer });
+      console.error('yt-dlp error code:', code);
+      console.error('yt-dlp stderr:', errorBuffer);
+      console.error('Cookies file exists:', fs.existsSync(cookiesPath));
+      console.error('Cookies path:', cookiesPath);
+      return res.status(500).json({
+        error: 'Failed to fetch video info',
+        details: errorBuffer,
+        debug: {
+          code,
+          cookiesFound: fs.existsSync(cookiesPath),
+          cookiesPath
+        }
+      });
     }
 
     try {
