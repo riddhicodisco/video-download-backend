@@ -74,16 +74,21 @@ const getVideoInfoYtDlp = (req, res) => {
     if (code !== 0) {
       console.error('yt-dlp error code:', code);
       console.error('yt-dlp stderr:', errorBuffer);
-      const isSignball = errorBuffer.includes('Sign in to confirm you\'re not a bot');
+
+      const lowerError = errorBuffer.toLowerCase();
+      const isSignball = lowerError.includes('sign in') ||
+        lowerError.includes('bot') ||
+        lowerError.includes('unavailable') ||
+        lowerError.includes('content is not available');
 
       return res.status(500).json({
-        error: isSignball ? 'YouTube blocked the request (Bot detection)' : 'Failed to fetch video info',
+        error: isSignball ? 'YouTube blocked the request (Bot detection/Unavailable)' : 'Failed to fetch video info',
         details: errorBuffer.trim(),
         debug: {
           code,
           cookiesFound: fs.existsSync(cookiesPath),
           cookiesPath,
-          suggestion: isSignball ? 'Try providing a cookies.txt file or use a fallback' : 'Check logs'
+          suggestion: isSignball ? 'Try providing a cookies.txt file or check if the video is age-restricted.' : 'Check logs'
         }
       });
     }
@@ -122,16 +127,17 @@ const downloadAudioYtDlp = (req, res) => {
   const infoProcess = spawn(ytDlpPath, infoArgs);
 
   let infoBuffer = '';
+  let infoErrorBuffer = '';
 
-  infoProcess.stdout.on('data', (data) => {
-    infoBuffer += data.toString();
-  });
+  infoProcess.stdout.on('data', (data) => infoBuffer += data.toString());
+  infoProcess.stderr.on('data', (data) => infoErrorBuffer += data.toString());
 
   infoProcess.on('close', (code) => {
     if (code !== 0) {
+      console.error('yt-dlp info error for audio download:', infoErrorBuffer);
       return res.status(500).json({
         error: 'Failed to fetch video details for download',
-        details: infoBuffer // This might actually be error info if it went to stdout or stderr
+        details: infoErrorBuffer.trim() || 'Check server logs'
       });
     }
 
@@ -197,14 +203,19 @@ const downloadVideoYtDlp = (req, res) => {
   const infoArgs = ['--dump-json', ...getDefaultArgs(), url];
   const infoProcess = spawn(ytDlpPath, infoArgs);
   let infoBuffer = '';
+  let infoErrorBuffer = '';
 
   infoProcess.stdout.on('data', (data) => infoBuffer += data.toString());
+  infoProcess.stderr.on('data', (data) => infoErrorBuffer += data.toString());
 
   infoProcess.on('close', (code) => {
-    if (code !== 0) return res.status(500).json({
-      error: 'Failed to fetch video details',
-      details: 'Check server logs for yt-dlp output'
-    });
+    if (code !== 0) {
+      console.error('yt-dlp info error for video download:', infoErrorBuffer);
+      return res.status(500).json({
+        error: 'Failed to fetch video details',
+        details: infoErrorBuffer.trim() || 'Check server logs'
+      });
+    }
 
     try {
       const info = JSON.parse(infoBuffer);
@@ -261,14 +272,21 @@ const downloadVideoYtDlp = (req, res) => {
   });
 };
 
-const diag = (req, res) => {
-  const binaryExists = fs.existsSync(ytDlpPath) || !isWindows; // On Linux it might be in PATH
+const diag = async (req, res) => {
+  const { execSync } = require('child_process');
+  let ffmpegVersion = 'not found';
+  try {
+    ffmpegVersion = execSync('ffmpeg -version').toString().split('\n')[0];
+  } catch (e) { }
+
+  const binaryExists = fs.existsSync(ytDlpPath) || !isWindows;
   res.json({
     status: 'online',
     platform: process.platform,
     env: process.env.NODE_ENV,
     corsOrigin: process.env.CORS_ORIGIN,
     detectedOrigin: req.get('origin') || 'no origin header',
+    ffmpeg: ffmpegVersion,
     ytDlp: {
       path: ytDlpPath,
       exists: binaryExists,
