@@ -48,6 +48,17 @@ const getVideoInfoYtDlp = (req, res) => {
 
   const ytDlp = spawn(ytDlpPath, args);
 
+  ytDlp.on('error', (err) => {
+    console.error('Failed to start yt-dlp process:', err);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'yt-dlp execution failed',
+        details: err.message,
+        path: ytDlpPath
+      });
+    }
+  });
+
   let dataBuffer = '';
   let errorBuffer = '';
 
@@ -213,10 +224,31 @@ const downloadVideoYtDlp = (req, res) => {
   });
 };
 
+const diag = (req, res) => {
+  const binaryExists = fs.existsSync(ytDlpPath) || !isWindows; // On Linux it might be in PATH
+  res.json({
+    status: 'online',
+    platform: process.platform,
+    env: process.env.NODE_ENV,
+    corsOrigin: process.env.CORS_ORIGIN,
+    detectedOrigin: req.get('origin') || 'no origin header',
+    ytDlp: {
+      path: ytDlpPath,
+      exists: binaryExists,
+      isWindows
+    },
+    cookiesFolder: {
+      path: cookiesPath,
+      exists: fs.existsSync(cookiesPath)
+    }
+  });
+};
+
 module.exports = {
   getVideoInfoYtDlp,
   downloadAudioYtDlp,
   downloadVideoYtDlp,
+  diag,
   // Debug function
   debugYtDlp: (req, res) => {
     const { spawn } = require('child_process');

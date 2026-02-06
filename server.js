@@ -50,6 +50,11 @@ app.use('/api', youtubeRoutes);
 
 // 404 handler
 app.use((req, res) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
   res.status(404).json({ error: 'Route not found' });
 });
 
@@ -60,6 +65,8 @@ app.use(errorHandler);
 const server = app.listen(PORT, () => {
   console.log(`✅ Server is running on http://localhost:${PORT}`);
   console.log(`📁 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📡 CORS_ORIGIN Config: ${process.env.CORS_ORIGIN || 'Allow All (*)'}`);
+  console.log(`🍪 Cookies Path: ${process.env.COOKIES_PATH || 'Standard'}`);
 
   // Initialize cron jobs
   const { initCronJobs } = require('./src/services/cronService');

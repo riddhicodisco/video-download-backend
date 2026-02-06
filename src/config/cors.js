@@ -1,41 +1,26 @@
-const cors = require('cors');
+// Manual CORS middleware to ensure maximum compatibility and clear debugging
+module.exports = (req, res, next) => {
+  const origin = req.headers.origin;
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    const allowedOriginEnv = process.env.CORS_ORIGIN;
+  // Log origin for every request to help fix production issues
+  console.log(`[CORS] Request Method: ${req.method}, Origin: ${origin || 'none'}`);
 
-    // Log for Render/Production debugging
-    console.log(`[CORS DEBUG] Request from Origin: ${origin}`);
-    console.log(`[CORS DEBUG] Allowed Origin Env: ${allowedOriginEnv}`);
+  if (origin) {
+    // Reflect origin back to allow credentials
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else {
+    // Fallback for non-browser requests
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
 
-    // If no origin (like mobile apps, postman, or same-origin), allow it
-    if (!origin) {
-      return callback(null, true);
-    }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
 
-    // If CORS_ORIGIN is set to * or not set, allow all for debugging
-    if (!allowedOriginEnv || allowedOriginEnv === '*') {
-      console.log('[CORS DEBUG] Wildcard or no env set - allowing');
-      return callback(null, true);
-    }
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
-    // Handle comma-separated list
-    const allowedOrigins = allowedOriginEnv.split(',').map(o => o.trim());
-
-    if (allowedOrigins.includes(origin)) {
-      console.log(`[CORS DEBUG] Origin ${origin} is in allowed list.`);
-      return callback(null, true);
-    } else {
-      console.error(`[CORS DEBUG] BLOCKED. Origin ${origin} not in [${allowedOrigins}]`);
-      // For debugging, we can return an error or null
-      return callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-  credentials: true,
-  preflightContinue: false,
-  optionsSuccessStatus: 204
+  next();
 };
-
-module.exports = cors(corsOptions);
