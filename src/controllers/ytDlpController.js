@@ -2,7 +2,14 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 // Path to yt-dlp executable in the root directory
-const ytDlpPath = path.join(__dirname, '../../yt-dlp.exe');
+const fs = require('fs');
+
+// Path determination for cross-platform support
+const isWindows = process.platform === 'win32';
+const localWinPath = path.join(__dirname, '../../yt-dlp.exe');
+
+// Use env var if set, otherwise local exe on Windows, otherwise 'yt-dlp' (PATH) on Linux
+const ytDlpPath = process.env.YT_DLP_PATH || (isWindows ? localWinPath : 'yt-dlp');
 
 const getVideoInfoYtDlp = (req, res) => {
   const { url } = req.body;
